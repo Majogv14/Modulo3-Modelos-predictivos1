@@ -1,0 +1,176 @@
+---
+title: "Módulo3"
+author: "María José Guzmán"
+date: "2024-01-04"
+output:
+  html_document:
+    theme: journal
+    number_sections: no
+    toc: yes
+    toc_def: yes
+    toc_float:
+      collapsed: yes
+      smooth_scroll: no
+    code_download: yes
+    code_fold: hide
+    df_print: paged
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+# Cargar paquetes
+
+```{r message=FALSE, warning=FALSE}
+library(readxl)
+library (stats)
+library(forecast)
+library(dplyr)
+library(GGally)
+library(car)
+```
+
+
+# Sección A
+
+**Ve al Banco Central y obtén las siguientes variables: Oferta Monetaria, Exportaciones**
+
+```{r}
+
+datos <- read_excel("C:/Users/maria/Dropbox/Acádemico/Análisis de datos/Módulo 3/TrabajoFinal/Datos.xlsx")
+
+```
+
+
+```{r}
+tsbase = ts(datos, start=c(2021,1), frequency = 12)
+```
+
+
+```{r}
+plot(tsbase[,"Ex"])
+```
+
+```{r}
+plot(tsbase[,"OM"])
+```
+
+
+**Calcula para cada variable la tasa de crecimiento promedio a través de los modelos aprendidos en las lecciones, reporta los resultados de la regresón y explica el coeficiente en cuestión**
+
+```{r}
+exportaciones <- tslm(log(tsbase[,"Ex"]) ~ trend, data = tsbase)
+summary(exportaciones)
+```
+```{r}
+(exp(0.007640)-1)*100
+```
+La tasa de crecimiento relativa compuesta para el periodo 2021M1 y 2023M10 es de 0.767, es decir en promedio mes a mes para el periodo 2021 a 2023 las exportaciones se incrementaron mensualmente 0.767% 
+
+
+```{r}
+ofertam <- tslm(log(tsbase[,"OM"]) ~ trend, data = tsbase)
+summary(ofertam)
+```
+
+```{r}
+(exp(1.920e-03)-1)*100
+```
+La tasa de crecimiento relativa compuesta para el periodo 2021M1 y 2023M10 es de 0.192, es decir en promedio mes a mes para el periodo 2021 a 2023 la oferta monetaria se incrementaron mensualmente 0.192% 
+
+
+# Sección B
+
+
+**Investiga en internet un modelo de regresión múltiple que considere la variable "Y" y al menos 2 variables X**
+
+Un estudio quiere generar un modelo que permita predecir la esperanza de vida media de los habitantes de una ciudad en función de diferentes variables. Se dispone de información sobre: habitantes, analfabetismo, ingresos, esperanza de vida, asesinatos, universitarios, heladas, área y densidad poblacional.
+
+
+```{r}
+
+datos <- as.data.frame(state.x77)
+datos <- rename(habitantes = Population, analfabetismo = Illiteracy,
+                ingresos = Income, esp_vida = `Life Exp`, asesinatos = Murder,
+                universitarios = `HS Grad`, heladas = Frost, area = Area,
+                .data = datos)
+datos <- mutate(.data = datos, densidad_pobl = habitantes * 1000 / area)
+```
+
+**Realiza la estimación de la regresión, reporta los resultados e interpreta los coeficientes. No olvides mencionar las pruebas de significancia individual, Aplica los contrastes aprendidos para identificar Autocorrelación, Heterocedasticidad, Multicolinealidad. Procede a atenuar con algún método, dependiendo de la dolencia del modelo. Reporta los resultados finales.**
+
+1. Analizar correlación
+
+```{r}
+round(cor(x = datos, method = "pearson"), 3)
+
+```
+```{r message=FALSE, warning=FALSE}
+
+ggpairs(datos, lower = list(continuous = "smooth"),
+        diag = list(continuous = "barDiag"), axisLabels = "none")
+
+```
+
+Del análisis preliminar se pueden extraer las siguientes conclusiones:
+
+- Las variables que tienen una mayor relación lineal con la esperanza de vida son: asesinatos (r= -0.78), analfabetismo (r= -0.59) y universitarios (r= 0.58).
+- Asesinatos y analfabetismo están medianamente correlacionados (r = 0.7) por lo que posiblemente no sea útil introducir ambos predictores en el modelo.
+- Las variables habitantes, área y densidad poblacional muestran una distribución exponencial, una transformación logarítmica posiblemente haría más normal su distribución.
+
+
+2. Generación del modelo
+
+```{r}
+mod1 <- lm(esp_vida ~ habitantes + ingresos + analfabetismo + asesinatos +
+               universitarios + heladas + area + densidad_pobl, data = datos )
+summary(mod1)
+```
+El modelo con todas las variables introducidas como predictores tiene un R2 alta (0.7501), es capaz de explicar el 75,01% de la variabilidad observada en la esperanza de vida. El p-value del modelo es significativo (3.787e-10) por lo que se puede aceptar que el modelo no es por azar, al menos uno de los coeficientes parciales de regresión es distinto de 0. Muchos de ellos no son significativos, lo que es un indicativo de que podrían no contribuir al modelo
+
+2. Heterocedasticidad
+
+```{r}
+residuos_estandarizados <- rstandard(mod1)
+
+plot(fitted(mod1), residuos_estandarizados, ylab = "Residuos Estandarizados", xlab = "Valores Ajustados", main = "Gráfico de Residuos Estandarizados")
+abline(h = 0, col = "red")
+```
+A nivel gráfico no se observan patrones de heteroscedasticidad en el modelo
+
+
+3. Multicolinealidad
+
+```{r}
+vif(mod1)
+```
+Al revisar multicolinealidad se observa que en el caso de ingresos, analfabetismo, asesinatos, universitarios heladas, área y densidad poblacional los valores se consideran altos, mayores a 2 por lo tanto para mejorar el modelo debido a la alta correlación se utiliza la estrategia de stepwise mixto. El valor matemático empleado para determinar la calidad del modelo va a ser Akaike(AIC).
+
+
+4. Selección del mejor modelo:
+
+```{r}
+step(object = mod1, direction = "both", trace = 1)
+```
+5. Mejor modelo
+
+```{r}
+mod2 <- (lm(formula = esp_vida ~ habitantes + asesinatos + universitarios +
+              heladas, data = datos))
+summary(mod2)
+```
+6. Multicolinealidad de nuevo
+
+```{r}
+vif(mod2)
+```
+Se observa que los valores no estan correlacionados con otros y que sus valores son menores a 2 lo que se considera bajos.
+
+7. Intervalos de confianza:
+
+```{r}
+confint(lm(formula = esp_vida ~ habitantes + asesinatos + universitarios +
+            heladas, data = datos))
+```
+Cada una de las pendientes de un modelo de regresión lineal múltiple (coeficientes parciales de regresión de los predictores) se define del siguiente modo: Si el resto de variables se mantienen constantes, por cada unidad que aumenta el predictor en cuestión, la variable (Y) varía en promedio tantas unidades como indica la pendiente. Para este ejemplo, por cada unidad que aumenta el predictor universitarios, la esperanza de vida aumenta en promedio 0.04658 unidades, manteniéndose constantes el resto de predictores.
